@@ -9,9 +9,9 @@
   width: calc(95% / 4);
 }
 
-.gallery__item:not(:nth-child(-n+2)) {
+/* .gallery__item:not(:nth-child(-n+2)) {
   margin-top: 20px;
-}
+} */
 
 .gallery__item img {
   width: 100%;

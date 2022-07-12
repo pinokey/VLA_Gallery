@@ -284,7 +284,7 @@ async function fetchData(url, options) {
         {currentAccount && (
           VLANfts.map((nft) => {
             return (
-              <li class="gallery__item">
+              <li className="gallery__item">
               <a href={nft.image_url} data-lightbox="group1" data-title={nft.name}>
                   <img src={nft.image_url} alt=""/>
                   {nft.name}
