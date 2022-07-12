@@ -135,7 +135,10 @@ const getVLANfts = async (wallet) => {
           if (nft.file_url.match("ipfs://")){
             image_url = "https://ipfs.io/ipfs/" + nft.file_url.substring(7);
            
-          } else {
+          } else if (nft.file_url.match("ipfs:/")) {
+            image_url = "https://ipfs.io/ipfs/" + nft.file_url.substring(6);
+          }
+          else {
             image_url = nft.file_url;
           }
       
