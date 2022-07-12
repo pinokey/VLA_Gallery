@@ -3,6 +3,7 @@ import React, {useEffect, useState} from "react";
 import { ethers } from "ethers";
 import './App.css';
 import abi from "./utils/sagitaPortal.json";
+import fetch from 'node-fetch';
 require("dotenv").config();
 
 
@@ -18,7 +19,7 @@ const App = () => {
   const [VLANfts, setVLANfts] = useState([]);
 
 //保有nft検索回り
-const fetch = require('node-fetch');
+// const fetch = require('node-fetch');
 //const CONTRACT = process.env.CONTRACT_ADDRESS;
 const CONTRACT = "0x2953399124f0cbb46d2cbacd8a89cf0599974963";
 // const AUTH = process.env.NFTPORT_AUTH;
