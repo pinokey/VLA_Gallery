@@ -1,8 +1,10 @@
-//サイトの表側を司るコード
+  //サイトの表側を司るコード
 import React, {useEffect, useState} from "react";
 import { ethers } from "ethers";
 import './App.css';
 import abi from "./utils/sagitaPortal.json";
+require("dotenv").config();
+
 
 const App = () => {
   // ユーザーのパブリックウォレットを保存するために使用する状態変数を定義する
@@ -12,35 +14,20 @@ const App = () => {
   console.log("currentAccount: ", currentAccount);
   const [messageValue, setMessageValue] = useState("")
   const [allEdges, setAllEdges] = useState([]);
-  const contractAddress = "0xbc9482466Ab7a2842311Ae3E4832dBaB62F4b20F";
   const contractABI = abi.abi;
-  const getAllEdges = async () => {
-    const {ethereum} = window;
+  const [VLANfts, setVLANfts] = useState([]);
 
-    try {
-      if (ethereum) {
-        const provider = new ethers.providers.Web3Provider(ethereum);
-        const signer = provider.getSigner();
-        const sagitaPortalContract = new ethers.Contract(contractAddress, contractABI, signer);
-        
-        //コントラクトからgetAllWavesメソッドを呼び出す
-        const edges = await sagitaPortalContract.getAllEdges();
-        //UIに必要な三つの情報を以下のように設定(親、子、承認数) 
-        const edgesCleaned = edges.map(edge => {
-          return {
-            parentname: edge.parentname,
-            childname: edge.childname, 
-            approvecount: edge.approvers.length,
-          };
-        });
-        setAllEdges(edgesCleaned);
-      } else {
-        console.log("Ethereum object doesn't exist!!");        
-      }
-    } catch (error) {
-      console.log(error);
-    }
-  };
+//保有nft検索回り
+const fetch = require('node-fetch');
+//const CONTRACT = process.env.CONTRACT_ADDRESS;
+const CONTRACT = "0x2953399124f0cbb46d2cbacd8a89cf0599974963";
+// const AUTH = process.env.NFTPORT_AUTH;
+const AUTH = process.env.REACT_APP_NFTPORT_AUTH_KEY;
+console.log("auth",AUTH);
+const chain = "polygon";
+const include = "metadata";
+
+
 
 
   const checkIfWalletIsConnected = async () => { 
@@ -58,7 +45,9 @@ const App = () => {
     if (accounts.length !==  0) {
       const account = accounts[0]; 
       console.log("Found an authorized account:", account);
-      setCurrentAccount(account)
+      setCurrentAccount(account);
+      await getVLANfts(account);
+    
     } else {
       console.log("No authorized account found")
     }
@@ -66,38 +55,6 @@ const App = () => {
     console.log(error);
   }
 };
-
-//emitされたイベントに反応する
-useEffect(() => {
-  let sagitaPortalContract;
-
-  const onNewEdge = (indexer, timestamp, parentname, parenturl, parentcontract, childname, childurl, childcontract, approvers) =>  {
-    console.log("NewWave", parentname, childname, approvers);
-    setAllEdges(prevState => [
-      ...prevState,
-      {
-        parentname: parentname,
-        childname: childname, 
-        approvecount: approvers.length
-      },
-    ]);
-  };
-
-  //new edgeイベントがコントラクトから発信された時情報を受け取る
-  if (window.ethereum) {
-    const provider = new ethers.providers.Web3Provider(window.ethereum);
-    const signer = provider.getSigner();
-
-    sagitaPortalContract = new ethers.Contract(contractAddress, contractABI, signer);
-    sagitaPortalContract.on("NewEdge", onNewEdge);
-  }
-  //メモリリークを防ぐためにnewWaveのイベントを解除します
-  return () => {
-    if (sagitaPortalContract) {
-      sagitaPortalContract.off("NewEdge", onNewEdge);
-    }
-  };
-}, []);
 
 //connectWallet メソッドの実装
 const connectWallet = async () => {
@@ -109,74 +66,183 @@ const connectWallet = async () => {
     }
     const accounts = await ethereum.request({method: "eth_requestAccounts"});
     console.log("Connected: ", accounts[0]);
-    setCurrentAccount(accounts[0]);    
+    setCurrentAccount(accounts[0]); 
+    await getVLANfts(accounts[0]);
+    
   } catch (error) {
     console.log(error)
   }
 }
 
-//edgeを追加する関数を実装
-//投票する関数を実装
-const approve = async(index) => {
-  try {
-    const {ethereum} = window;
-    if (ethereum) {
-      const provider = new ethers.providers.Web3Provider(ethereum);
-      const signer = provider.getSigner();
-      const sagitaPortalContract = new ethers.Contract(contractAddress,  contractABI, signer);
-      // let count = await sagitaPortalContract.getTotalWaves();
-      let contractBalance = await provider.getBalance( 
-        sagitaPortalContract.address);
-      //   console.log(
-      //     "Contract balance:", 
-      //     ethers.utils.formatEther(contractBalance)
-      //   );
-      // console.log("Retrieved total wave count...", count.toNumber());
-      console.log("Signer:",signer);    
-      //コントラクトにwaveを書き込む
-      const approveTxn = await sagitaPortalContract.approve(index, {gasLimit:300000});
-      console.log("Mining...", approveTxn.hash);
-      await approveTxn.wait();
-      console.log("Minted --", approveTxn.hash);
-      // count = await sagitaPortalContract.getTotalWaves();
-      // console.log("Retrieved total wave count ...", count.toNumber()) ;
-      let contractBalance_post = await provider.getBalance(sagitaPortalContract.address);
-      if (contractBalance_post < contractBalance){
-        console.log("User won ETH!");
-      } else {
-        console.log("User didn't win Eth.");
-      }
-      console.log(
-        "contract balance after approval",
-        ethers.utils.formatEther(contractBalance_post)
-      );
-      getAllEdges();
-    } else {
-      console.log("Ethereum object doesn't exist!");
+
+//nftを取得する
+const getVLANfts = async (wallet) => {
+  const page = 50;
+  const url_main = 'https://api.nftport.xyz/v0/accounts/' + wallet + '?chain=polygon';
+  
+  const options = {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: AUTH,
     }
-  } catch (error) {
-  console.log(error)
-  } 
+  };
+  
+  try {
+    let data = await fetchData(url_main, options);
+    let All_nfts =data.nfts;
+    let continuation = data.continuation;
+    while (continuation != null){
+      let url = url_main + "&continuation=" + continuation;
+      data = await fetchData(url, options);
+      All_nfts = All_nfts.concat(data.nfts);
+      continuation = data.continuation;
+    }
+    console.log("date:", data);
+   
+    const total = All_nfts.length;
+    console.log("total", total);
+
+    const ipfschecker = async (nft) => {
+      let image_url = "";
+      if (nft.file_url.match("ipfs://")){
+        image_url = "https://ipfs.io/ipfs/" + nft.file_url.substring(7);
+        return image_url
+      } else {
+        return nft.file_url
+      }
+    }
+
+    All_nfts.forEach(nft => {
+      if(nft.name.match("very") || nft.name.match("long") || nft.name.match("animals") || nft.name.match("Animals") || nft.name.match("Very")|| nft.name.match("Long") || nft.name.match("ベリ")　|| nft.name.match("ロン")) {
+        if (nft.contract_address=="0xC52d9642260830055c986a97794B7b27393Edf5e"){
+          let image_url = "";
+      if (nft.file_url.match("ipfs://")){
+        image_url = "https://ipfs.io/ipfs/" + nft.file_url.substring(7);
+       
+      } else {
+        image_url = nft.file_url;
+      }
+          setVLANfts(prevState => [
+            ...prevState,
+            {"name": nft.name, "image_url": image_url, "genesis_flag":5}
+          ]);
+       
+        }
+        else{
+          let image_url = "";
+          if (nft.file_url.match("ipfs://")){
+            image_url = "https://ipfs.io/ipfs/" + nft.file_url.substring(7);
+           
+          } else {
+            image_url = nft.file_url;
+          }
+      
+          setVLANfts(prevState => [
+            ...prevState,
+            {"name": nft.name, "image_url": image_url, "genesis_flag":2}
+          ]);
+        
+        }
+      }
+    })
+
+
+    return 
+      //next_page: +page === pages ? null : +page + 1,
+
+  } catch(err) {
+    console.log(`Catch: ${JSON.stringify(err)}`)
+    return {
+      error: err
+    }
+  }
 }
+
+async function fetchData(url, options) {
+  try {
+    const res = await fetch(url, options);
+    if (res.status != 200){
+      throw new Error(`${res.status} ${res.statusText}`);
+    }
+    const text = await res.json();
+    console.log(text);
+    return text;
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+// //edgeを追加する関数を実装
+// //投票する関数を実装
+// const approve = async(index) => {
+//   try {
+//     const {ethereum} = window;
+//     if (ethereum) {
+//       const provider = new ethers.providers.Web3Provider(ethereum);
+//       const signer = provider.getSigner();
+//       const sagitaPortalContract = new ethers.Contract(contractAddress,  contractABI, signer);
+//       // let count = await sagitaPortalContract.getTotalWaves();
+//       let contractBalance = await provider.getBalance( 
+//         sagitaPortalContract.address);
+//       //   console.log(
+//       //     "Contract balance:", 
+//       //     ethers.utils.formatEther(contractBalance)
+//       //   );
+//       // console.log("Retrieved total wave count...", count.toNumber());
+//       console.log("Signer:",signer);    
+//       //コントラクトにwaveを書き込む
+//       const approveTxn = await sagitaPortalContract.approve(index, {gasLimit:300000});
+//       console.log("Mining...", approveTxn.hash);
+//       await approveTxn.wait();
+//       console.log("Minted --", approveTxn.hash);
+//       // count = await sagitaPortalContract.getTotalWaves();
+//       // console.log("Retrieved total wave count ...", count.toNumber()) ;
+//       let contractBalance_post = await provider.getBalance(sagitaPortalContract.address);
+//       if (contractBalance_post < contractBalance){
+//         console.log("User won ETH!");
+//       } else {
+//         console.log("User didn't win Eth.");
+//       }
+//       console.log(
+//         "contract balance after approval",
+//         ethers.utils.formatEther(contractBalance_post)
+//       );
+//       getAllEdges();
+//       visualize();
+//     } else {
+//       console.log("Ethereum object doesn't exist!");
+//     }
+//   } catch (error) {
+//   console.log(error)
+//   } 
+// }
   
 // webページがロードされた時、実行する関数
   useEffect(() => {
-    checkIfWalletIsConnected();  
-    getAllEdges();
+
+//    getAllEdges();
+
+      checkIfWalletIsConnected();  
+    
+      // const a = await getVLANfts(currentAccount);
+    // console.log("a:",a);
+    // console.log("ownedNFT", owned_NFT);åß
+    
   }, []) 
   return (
 
     <div className="mainContainer">
        <div className="fixed left-0 right-0 bg-white z-10">
-         <div class="mx-auto max-w-7xl px-2 lg:px-4">
-       <header class="flex flex-col lg:flex-row lg:items-center lg:h-20">
-       <div class="flex items-center h-14"><div class="flex flex-grow"><a class="flex items-center" href="/">
-      Sagita
+         <div className="mx-auto max-w-7xl px-2 lg:px-4">
+       <header className="flex flex-col lg:flex-row lg:items-center lg:h-20">
+       <div className="flex items-center h-14"><div className="flex flex-grow"><a className="flex items-center" href="/">
+      Your VLA Portal
        </a>
        </div>
        </div>
-               <div className="ml-auto flex items-center"><nav className="hidden lg:flex space-x-10 ml-4 items-center"><a className="text-base font-medium text-gray-500 hover:text-gray-900" href="/addedge">Add Edge</a><a className="text-base font-medium text-gray-500 hover:text-gray-900" href="/validation">Approve Edge</a>
-               <div>Chain: <b>Rinkeby</b></div>
+               <div className="ml-auto flex items-center"><nav className="hidden lg:flex space-x-10 ml-4 items-center"><a className="text-base font-medium text-gray-500 hover:text-gray-900" href="/test">test</a><a className="text-base font-medium text-gray-500 hover:text-gray-900" href="/test">test</a>
+               <div>Chain: <b>Polygon</b></div>
                <div>
                   {/* ウォレットコネクトボタンの実装*/}
         {!currentAccount &&  (
@@ -191,10 +257,10 @@ const approve = async(index) => {
         )}</div></nav></div></header></div></div>
       <div className="dataContainer">
         <div className="text-lg mb-1">
-          What is segita?
+       VLA portalとは？？
         </div>
         <div className="text-gray-400 text-sm bio">
-          sagita visualizes the relation of the original and fanfic. Let's visualize your community!!
+          VLA PortalではあなたのVLA関係のNFT一覧が見れるよ！！自分のギャラリーをツイートしよう！！
         </div>
         {/* <button className="waveButton" onClick={wave}>
           approve
@@ -207,26 +273,24 @@ const approve = async(index) => {
         id="message"
         value={messageValue}
         onChange={e => setMessageValue(e.target.value)}/>)} */}
-        <h2 className="text-lg mb-1">Edges</h2>
-        <p className="text-gray-400 text-sm">Please approve to visualize your community !!</p>
-        {/*edgeのリストとapproveボタンを表示*/}
+        <h2 className="text-lg mb-1">Your VLA Gallary</h2>
+        <p className="text-gray-400 text-sm"></p>
+        {/*VLAの画像一覧を表示*/}
+        <ul className="gallery__list">
         {currentAccount && (
-          allEdges.slice(0).map((edge, index) => {
+          VLANfts.map((nft) => {
             return (
-              <div>
-              <div key={index} style={{ backgroundColor: "#F8F8FF", marginTop: "16px", padding: "8px"}}>
-                <div>Parent: {edge.parentname}</div>
-                <div>Child: {edge.childname}</div>
-                <div>Approves: {edge.approvecount}</div>
-                </div>
-                <button className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500" onClick={() => approve(index)}>
-          approve
-        </button> 
-                </div>
+              <li class="gallery__item">
+              <a href={nft.image_url} data-lightbox="group1" data-title={nft.name}>
+                  <img src={nft.image_url} alt=""/>
+                  {nft.name}
+              </a>
+              </li>
             )
           })
         )}
-      
+        </ul>
+     
       </div>
      
     </div>
