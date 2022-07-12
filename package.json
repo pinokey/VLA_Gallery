@@ -8,6 +8,7 @@
     "@testing-library/user-event": "^7.1.2",
     "dotenv": "^16.0.1",
     "ethers": "^5.4.4",
+    "fetch": "^1.1.0",
     "node-fetch": "^3.0.0",
     "node-http": "^0.0.5",
     "react": "^16.12.0",
